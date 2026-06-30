@@ -33,7 +33,7 @@ El sistema se divide en tres capas principales:
 ## ⚙️ Configuración y Uso
 
 ### 1. Variables de Entorno (Credenciales)
-Por motivos de seguridad, las credenciales reales han sido ofuscadas. Antes de flashear el microcontrolador, debes rellenar los datos de tu entorno en la cabecera del script `gemelo_digital_hibrido_flotaV2.py`:
+Por motivos de seguridad, las credenciales reales han sido ofuscadas. Antes de flashear el microcontrolador, debes rellenar los datos de tu entorno en la cabecera del script `gemelo_digital_hibrido_flotaV3.py`:
 
 ```python
 WIFI_SSID = "TU_SSID_WIFI"
