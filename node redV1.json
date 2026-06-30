@@ -1,0 +1,187 @@
+[
+    {
+        "id": "b1.broker.local",
+        "type": "mqtt-broker",
+        "name": "Mosquitto Docker",
+        "broker": "mosquitto",
+        "port": "1883",
+        "clientid": "",
+        "autoConnect": true,
+        "usetls": false,
+        "protocolVersion": "4",
+        "keepalive": "60",
+        "cleansession": true,
+        "birthTopic": "",
+        "birthQos": "0",
+        "birthPayload": "",
+        "closeTopic": "",
+        "closeQos": "0",
+        "closePayload": "",
+        "willTopic": "",
+        "willQos": "0",
+        "willPayload": ""
+    },
+    {
+        "id": "b2.influx.local",
+        "type": "influxdb",
+        "hostname": "influxdb",
+        "port": "8086",
+        "protocol": "http",
+        "database": "pruebas_tuya",
+        "name": "InfluxDB Docker",
+        "usetls": false,
+        "tls": ""
+    },
+    {
+        "id": "n1.mqtt.in",
+        "type": "mqtt in",
+        "z": "tab_laboratorio",
+        "name": "Recibir ESP32",
+        "topic": "casa1/sensor_ambiente",
+        "qos": "0",
+        "datatype": "auto-detect",
+        "broker": "b1.broker.local",
+        "nl": false,
+        "rap": true,
+        "rh": 0,
+        "inputs": 0,
+        "x": 130,
+        "y": 140,
+        "wires": [
+            [
+                "n2.json.parse"
+            ]
+        ]
+    },
+    {
+        "id": "n2.json.parse",
+        "type": "json",
+        "z": "tab_laboratorio",
+        "name": "Convertir JSON",
+        "property": "payload",
+        "action": "",
+        "pretty": false,
+        "x": 340,
+        "y": 140,
+        "wires": [
+            [
+                "n3.func.adaptar",
+                "n5.debug.monitor"
+            ]
+        ]
+    },
+    {
+        "id": "n3.func.adaptar",
+        "type": "function",
+        "z": "tab_laboratorio",
+        "name": "Adaptar para InfluxDB",
+        "func": "// Capturamos la lista de DPS que viene de la API Cloud de Tuya\nlet dps = msg.payload.dps;\n\nif (dps && Array.isArray(dps)) {\n    // Buscamos dinámicamente los valores dentro de la lista por su código de propiedad\n    let itemTemp = dps.find(item => item.code === \"va_temperature\");\n    let itemHum  = dps.find(item => item.code === \"va_humidity\");\n    let itemBat  = dps.find(item => item.code === \"battery_percentage\");\n\n    // Extraemos y convertimos (Tuya Cloud entrega la temperatura multiplicada por 10)\n    let temperatura = itemTemp ? itemTemp.value / 10 : null;\n    let humedad     = itemHum ? itemHum.value : null;\n    let bateria     = itemBat ? itemBat.value : null;\n\n    // Si al menos tenemos temperatura o humedad, armamos el paquete para InfluxDB\n    if (temperatura !== null || humedad !== null) {\n        msg.payload = {\n            temperatura: temperatura,\n            humedad: humedad,\n            bateria: bateria\n        };\n        \n        // Definimos los tags identificativos de la serie temporal\n        msg.tags = {\n            ubicacion: \"salon\",\n            dispositivo: \"Tuya_Cloud_v2\"\n        };\n\n        return msg;\n    }\n}\nreturn null; // Descarta el mensaje si el formato no coincide",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 560,
+        "y": 140,
+        "wires": [
+            [
+                "n4.influx.out"
+            ]
+        ]
+    },
+    {
+        "id": "n4.influx.out",
+        "type": "influxdb out",
+        "z": "tab_laboratorio",
+        "influxdb": "b2.influx.local",
+        "name": "Guardar Histórico",
+        "measurement": "clima_local",
+        "precision": "",
+        "retentionPolicy": "",
+        "database": "pruebas_tuya",
+        "precisionV18FluxV20": "ms",
+        "retentionPolicyV18FluxV20": "",
+        "org": "",
+        "bucket": "",
+        "x": 810,
+        "y": 140,
+        "wires": []
+    },
+    {
+        "id": "n5.debug.monitor",
+        "type": "debug",
+        "z": "tab_laboratorio",
+        "name": "Monitor Consola",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "payload",
+        "targetType": "msg",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 540,
+        "y": 220,
+        "wires": []
+    },
+    {
+        "id": "n6.inject.query",
+        "type": "inject",
+        "z": "tab_laboratorio",
+        "name": "Consultar Base de Datos",
+        "props": [],
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "",
+        "x": 170,
+        "y": 320,
+        "wires": [
+            [
+                "n7.influx.query"
+            ]
+        ]
+    },
+    {
+        "id": "n7.influx.query",
+        "type": "influxdb in",
+        "z": "tab_laboratorio",
+        "influxdb": "b2.influx.local",
+        "name": "Traer Últimas Lecturas",
+        "query": "SELECT * FROM clima_local ORDER BY time DESC LIMIT 5",
+        "rawOutput": false,
+        "precision": "",
+        "retentionPolicy": "",
+        "database": "pruebas_tuya",
+        "precisionV18FluxV20": "ms",
+        "retentionPolicyV18FluxV20": "",
+        "org": "",
+        "bucket": "",
+        "x": 420,
+        "y": 320,
+        "wires": [
+            [
+                "n8.debug.query"
+            ]
+        ]
+    },
+    {
+        "id": "n8.debug.query",
+        "type": "debug",
+        "z": "tab_laboratorio",
+        "name": "Ver Histórico en Consola",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "payload",
+        "targetType": "msg",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 670,
+        "y": 320,
+        "wires": []
+    }
+]

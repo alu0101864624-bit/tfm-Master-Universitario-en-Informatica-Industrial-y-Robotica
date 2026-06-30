@@ -1,0 +1,269 @@
+[
+    {
+        "id": "b30b72cfd30dd1d4",
+        "type": "tab",
+        "label": "Flow 1",
+        "disabled": false,
+        "info": ""
+    },
+    {
+        "id": "26ad4576f5a88e06",
+        "type": "mqtt in",
+        "z": "b30b72cfd30dd1d4",
+        "name": "Recibir ESP32",
+        "topic": "canarias/#",
+        "qos": "0",
+        "datatype": "auto-detect",
+        "broker": "0ceb6ce9dfbdb925",
+        "nl": false,
+        "rap": true,
+        "rh": 0,
+        "inputs": 0,
+        "x": 220,
+        "y": 200,
+        "wires": [
+            [
+                "387afaffa54b155e"
+            ]
+        ]
+    },
+    {
+        "id": "387afaffa54b155e",
+        "type": "json",
+        "z": "b30b72cfd30dd1d4",
+        "name": "Convertir JSON",
+        "property": "payload",
+        "action": "",
+        "pretty": false,
+        "x": 430,
+        "y": 200,
+        "wires": [
+            [
+                "7cf96d82ffeb661b",
+                "b06a427aa75341b0"
+            ]
+        ]
+    },
+    {
+        "id": "7cf96d82ffeb661b",
+        "type": "function",
+        "z": "b30b72cfd30dd1d4",
+        "name": "Adaptar para InfluxDB",
+        "func": "/// NUEVA LOGICA DE DESEMPAQUETADO MULTI-INSTALACIÓN EN NODE-RED (BLINDADA PARA INFLUXDB)\nif (msg.payload) {\n    // CORRECCIÓN CRUCIAL: Si ya es un objeto lo usamos, si es texto lo parseamos\n    var paquete = (typeof msg.payload === \"string\") ? JSON.parse(msg.payload) : msg.payload;\n    \n    var origen = paquete.procedencia || \"desconocido\"; \n    \n    var temp_int = null, hum_int = null;\n    var temp_ext = null, hum_ext = null;\n    \n    // 1. Desempaquetar Sensor Interior (Tuya)\n    if (paquete.sensor_clima_interior && Array.isArray(paquete.sensor_clima_interior)) {\n        paquete.sensor_clima_interior.forEach(function(item) {\n            if (item.code === \"va_temperature\") temp_int = item.value / 10.0;\n            if (item.code === \"va_humidity\") hum_int = item.value;\n        });\n    }\n    \n    // 2. Desempaquetar Sensor Exterior (Tuya)\n    if (paquete.sensor_clima_exterior && Array.isArray(paquete.sensor_clima_exterior)) {\n        paquete.sensor_clima_exterior.forEach(function(item) {\n            if (item.code === \"va_temperature\") temp_ext = item.value / 10.0;\n            if (item.code === \"va_humidity\") hum_ext = item.value;\n        });\n    }\n    \n    // 3. Extraer Variables del Vatímetro y Caudalímetro Simulado\n    var potencia = null;\n    var caudal = null;\n    \n    if (paquete.vatimetro_simulado && typeof paquete.vatimetro_simulado === \"object\") {\n        potencia = paquete.vatimetro_simulado.potencia_activa_W;\n        caudal = paquete.vatimetro_simulado.caudal_agua_Lmin;\n    } else {\n        potencia = paquete.consumo_electrico_W !== undefined ? paquete.consumo_electrico_W : paquete.vatimetro_simulado;\n        caudal = paquete.caudal_agua_Lmin !== undefined ? paquete.caudal_agua_Lmin : paquete.caudalimetro_simulado;\n    }\n\n    // 4. CREAR OBJETO DE CAMPOS LIMPIO (Métricas numéricas)\n    var campos = {};\n    if (temp_int !== null) campos.temperatura_interior = temp_int;\n    if (hum_int !== null) campos.humedad_interior = hum_int;\n    if (temp_ext !== null) campos.temperatura_exterior = temp_ext;\n    if (hum_ext !== null) campos.humedad_exterior = hum_ext;\n    if (potencia !== null && potencia !== undefined) campos.consumo_electrico_W = potencia;\n    if (caudal !== null && caudal !== undefined) campos.caudal_agua_Lmin = caudal;\n\n    // 5. ENRIQUECIMIENTO DE ETIQUETAS (TAGS) PARA MÚLTIPLES INSTALACIONES\n    // Inicializamos con los valores por defecto / antiguos por compatibilidad\n    var etiquetas = {\n        procedencia: origen,\n        concentrador_hw: \"LILYGO_T_SIM7600\"\n    };\n\n    // 🌟 LA MAGIA MULTI-NODO: Si el payload incluye el diccionario avanzado de metadatos, los mapeamos uno a uno\n    if (paquete.metadatos && typeof paquete.metadatos === \"object\") {\n        etiquetas.isla = paquete.metadatos.isla || \"desconocido\";\n        etiquetas.municipio = paquete.metadatos.municipio || \"desconocido\";\n        etiquetas.tipo_instalacion = paquete.metadatos.tipo_instalacion || \"desconocido\";\n        etiquetas.centro = paquete.metadatos.centro || \"desconocido\";\n        etiquetas.zona = paquete.metadatos.zona || \"desconocido\";\n        \n        // Si en el ESP32 definiste el modelo de hardware dinámicamente, lo sobreescribimos aquí\n        if (paquete.metadatos.hw_modelo) {\n            etiquetas.concentrador_hw = paquete.metadatos.hw_modelo;\n        }\n    }\n\n    // 6. Crear payload final estructurado para InfluxDB\n    if (Object.keys(campos).length > 0) {\n        msg.payload = [\n            campos,    // [ {campos_numéricos} ] -> Se guardan como FIELDS (No indexados, ocupan poco espacio)\n            etiquetas  // [ {etiquetas_de_texto} ] -> Se guardan como TAGS (Indexados en BD, perfectos para los WHERE de Grafana)\n        ];\n        return msg;\n    }\n}\nreturn null;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 650,
+        "y": 200,
+        "wires": [
+            [
+                "695abd457c420ee3",
+                "18c6a73e615e5b5e"
+            ]
+        ]
+    },
+    {
+        "id": "b06a427aa75341b0",
+        "type": "debug",
+        "z": "b30b72cfd30dd1d4",
+        "name": "Monitor Consola",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "payload",
+        "targetType": "msg",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 630,
+        "y": 280,
+        "wires": []
+    },
+    {
+        "id": "a1ea0b9d48a99444",
+        "type": "inject",
+        "z": "b30b72cfd30dd1d4",
+        "name": "Consultar Base de Datos",
+        "props": [],
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "",
+        "x": 260,
+        "y": 380,
+        "wires": [
+            [
+                "c8e52cbb0098edb4"
+            ]
+        ]
+    },
+    {
+        "id": "614579bba8717265",
+        "type": "debug",
+        "z": "b30b72cfd30dd1d4",
+        "name": "Ver Histórico en Consola",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "payload",
+        "targetType": "msg",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 760,
+        "y": 380,
+        "wires": []
+    },
+    {
+        "id": "ad075e76587c48f1",
+        "type": "http in",
+        "z": "b30b72cfd30dd1d4",
+        "name": "hora",
+        "url": "hora_local",
+        "method": "get",
+        "upload": false,
+        "skipBodyParsing": false,
+        "swaggerDoc": "",
+        "x": 190,
+        "y": 480,
+        "wires": [
+            [
+                "4592dc6894c0fcb0"
+            ]
+        ]
+    },
+    {
+        "id": "4592dc6894c0fcb0",
+        "type": "function",
+        "z": "b30b72cfd30dd1d4",
+        "name": "function 1",
+        "func": "// Forzamos la obtención de la fecha en formato UTC puro\nvar ahora = new Date();\nvar utc_milisegundos = ahora.getTime() + (ahora.getTimezoneOffset() * 60000);\n\nmsg.payload = { \"t\": utc_milisegundos };\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 340,
+        "y": 480,
+        "wires": [
+            [
+                "25bc51a9cb4380ea"
+            ]
+        ]
+    },
+    {
+        "id": "25bc51a9cb4380ea",
+        "type": "http response",
+        "z": "b30b72cfd30dd1d4",
+        "name": "",
+        "statusCode": "",
+        "headers": {},
+        "x": 530,
+        "y": 480,
+        "wires": []
+    },
+    {
+        "id": "695abd457c420ee3",
+        "type": "influxdb out",
+        "z": "b30b72cfd30dd1d4",
+        "influxdb": "ac6f631fc39a1856",
+        "name": "Guardar Histórico",
+        "measurement": "clima_local",
+        "precision": "",
+        "retentionPolicy": "",
+        "database": "pruebas_tuya",
+        "precisionV18FluxV20": "ms",
+        "retentionPolicyV18Flux": "",
+        "org": "",
+        "bucket": "",
+        "x": 900,
+        "y": 200,
+        "wires": []
+    },
+    {
+        "id": "c8e52cbb0098edb4",
+        "type": "influxdb in",
+        "z": "b30b72cfd30dd1d4",
+        "influxdb": "ac6f631fc39a1856",
+        "name": "Traer Últimas Lecturas",
+        "query": "SELECT * FROM clima_local ORDER BY time DESC LIMIT 5",
+        "rawOutput": false,
+        "precision": "",
+        "retentionPolicy": "",
+        "org": "",
+        "x": 510,
+        "y": 380,
+        "wires": [
+            [
+                "614579bba8717265"
+            ]
+        ]
+    },
+    {
+        "id": "18c6a73e615e5b5e",
+        "type": "debug",
+        "z": "b30b72cfd30dd1d4",
+        "name": "debug 1",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "true",
+        "targetType": "full",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 860,
+        "y": 280,
+        "wires": []
+    },
+    {
+        "id": "0ceb6ce9dfbdb925",
+        "type": "mqtt-broker",
+        "name": "Mosquitto Docker",
+        "broker": "mosquitto",
+        "port": "1883",
+        "clientid": "",
+        "autoConnect": true,
+        "usetls": false,
+        "protocolVersion": "4",
+        "keepalive": "60",
+        "cleansession": true,
+        "birthTopic": "",
+        "birthQos": "0",
+        "birthPayload": "",
+        "closeTopic": "",
+        "closeQos": "0",
+        "closePayload": "",
+        "willTopic": "",
+        "willQos": "0",
+        "willPayload": ""
+    },
+    {
+        "id": "ac6f631fc39a1856",
+        "type": "influxdb",
+        "hostname": "influxdb",
+        "port": "8086",
+        "protocol": "http",
+        "database": "pruebas_tuya",
+        "name": "InfluxDB Docker",
+        "usetls": false,
+        "tls": "",
+        "influxdbVersion": "1.x",
+        "url": "",
+        "timeout": "",
+        "rejectUnauthorized": false
+    },
+    {
+        "id": "f6dbba9e6c74d2e5",
+        "type": "global-config",
+        "env": [],
+        "modules": {
+            "node-red-contrib-influxdb": "0.7.0"
+        }
+    }
+]

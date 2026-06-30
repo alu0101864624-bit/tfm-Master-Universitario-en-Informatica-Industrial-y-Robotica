@@ -1,0 +1,332 @@
+[
+    {
+        "id": "b8da40b5e5b44b97",
+        "type": "tab",
+        "label": "Flow 1",
+        "disabled": false,
+        "info": ""
+    },
+    {
+        "id": "4d7e94f7f301b5bf",
+        "type": "mqtt in",
+        "z": "b8da40b5e5b44b97",
+        "name": "Recibir ESP32",
+        "topic": "canarias/#",
+        "qos": "0",
+        "datatype": "utf8",
+        "broker": "0ceb6ce9dfbdb925",
+        "nl": false,
+        "rap": true,
+        "rh": 0,
+        "inputs": 0,
+        "x": 220,
+        "y": 200,
+        "wires": [
+            [
+                "4bc28e2a7035251f"
+            ]
+        ]
+    },
+    {
+        "id": "4bc28e2a7035251f",
+        "type": "json",
+        "z": "b8da40b5e5b44b97",
+        "name": "Convertir JSON",
+        "property": "payload",
+        "action": "",
+        "pretty": false,
+        "x": 430,
+        "y": 200,
+        "wires": [
+            [
+                "5d3e44254f3762e7",
+                "e10f280ac5a00497",
+                "a0a5c875536d4f93"
+            ]
+        ]
+    },
+    {
+        "id": "a0a5c875536d4f93",
+        "type": "switch",
+        "z": "b8da40b5e5b44b97",
+        "name": "Enrutar por Tipo Sensor",
+        "property": "payload.metadatos.tipo_sensor",
+        "propertyType": "msg",
+        "rules": [
+            {
+                "t": "eq",
+                "v": "temperatura_interior",
+                "vt": "str"
+            },
+            {
+                "t": "eq",
+                "v": "caudal",
+                "vt": "str"
+            }
+        ],
+        "checkall": "true",
+        "repair": false,
+        "outputs": 2,
+        "x": 650,
+        "y": 70,
+        "wires": [
+            [
+                "0c1e7a7f0407840e",
+                "4d3a20300f3fa5ee"
+            ],
+            [
+                "48147c710a8aa401"
+            ]
+        ]
+    },
+    {
+        "id": "0c1e7a7f0407840e",
+        "type": "function",
+        "z": "b8da40b5e5b44b97",
+        "name": "Algoritmo: Z-Score",
+        "func": "let datos = msg.payload.datos_sensores;\nif (!datos || datos.temperatura_int_C === undefined) return null;\n\nlet id_disp = msg.payload.metadatos.id_dispositivo;\nlet temp = datos.temperatura_int_C;\n\nlet historicos = context.get('ventanas') || {};\nif (!historicos[id_disp]) historicos[id_disp] = [];\nlet ventana = historicos[id_disp];\n\nventana.push(temp);\nif (ventana.length > 20) ventana.shift();\nhistoricos[id_disp] = ventana;\ncontext.set('ventanas', historicos);\n\nlet alarma = false;\nif (ventana.length >= 10) {\n    let media = ventana.reduce((a, b) => a + b, 0) / ventana.length;\n    let varianza = ventana.reduce((a, b) => a + Math.pow(b - media, 2), 0) / (ventana.length - 1);\n    let desviacion = Math.sqrt(varianza) || 0.1;\n    \n    let z_score = Math.abs(temp - media) / desviacion;\n    alarma = z_score > 2.5;\n}\n\nmsg.prediccion_algoritmo = alarma;\nmsg.nombre_algoritmo = \"Z-Score_Termico\";\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 870,
+        "y": 30,
+        "wires": [
+            [
+                "26f85224881ce817"
+            ]
+        ]
+    },
+    {
+        "id": "4d3a20300f3fa5ee",
+        "type": "function",
+        "z": "b8da40b5e5b44b97",
+        "name": "Algoritmo: EWMA",
+        "func": "let datos = msg.payload.datos_sensores;\nif (!datos || datos.temperatura_int_C === undefined) return null;\n\nlet id_disp = msg.payload.metadatos.id_dispositivo;\nlet temp = datos.temperatura_int_C;\nlet alpha = 0.3;\n\nlet historico_ewma = context.get('valores_ewma') || {};\nlet ewma_previo = historico_ewma[id_disp];\n\nif (ewma_previo === undefined) {\n    historico_ewma[id_disp] = temp;\n    context.set('valores_ewma', historico_ewma);\n    msg.prediccion_algoritmo = false;\n    msg.nombre_algoritmo = \"EWMA_Termico\";\n    return msg;\n}\n\nlet ewma_actual = (alpha * temp) + ((1 - alpha) * ewma_previo);\nhistorico_ewma[id_disp] = ewma_actual;\ncontext.set('valores_ewma', historico_ewma);\n\nlet error = Math.abs(temp - ewma_actual);\nlet alarma = error > 1.5;\n\nmsg.prediccion_algoritmo = alarma;\nmsg.nombre_algoritmo = \"EWMA_Termico\";\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 870,
+        "y": 70,
+        "wires": [
+            [
+                "26f85224881ce817"
+            ]
+        ]
+    },
+    {
+        "id": "48147c710a8aa401",
+        "type": "function",
+        "z": "b8da40b5e5b44b97",
+        "name": "Algoritmo: Lógica Difusa",
+        "func": "let datos = msg.payload.datos_sensores;\nif (!datos || datos.caudal_Lmin === undefined) return null;\n\nlet caudal = datos.caudal_Lmin;\nlet ts = msg.payload.timestamp_local;\nlet hora = new Date(ts * 1000).getUTCHours();\n\nlet mu_noche = 0.0;\nif (hora >= 0 && hora <= 5) mu_noche = 1.0;\nelse if (hora > 5 && hora <= 7) mu_noche = 1.0 - ((hora - 5) / 2.0);\nelse if (hora >= 22 && hora <= 24) mu_noche = (hora - 22) / 2.0;\n\nlet umbral_base = 10.0;\nlet mu_alto = 0.0;\nif (caudal > umbral_base * 2) mu_alto = 1.0;\nelse if (caudal > umbral_base) mu_alto = (caudal - umbral_base) / umbral_base;\n\nlet riesgo_fuga = Math.min(mu_noche, mu_alto);\nlet alarma = riesgo_fuga > 0.65;\n\nmsg.prediccion_algoritmo = alarma;\nmsg.nombre_algoritmo = \"Logica_Difusa_Fugas\";\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 890,
+        "y": 120,
+        "wires": [
+            [
+                "26f85224881ce817"
+            ]
+        ]
+    },
+    {
+        "id": "26f85224881ce817",
+        "type": "function",
+        "z": "b8da40b5e5b44b97",
+        "name": "Evaluador Científico Central",
+        "func": "let real_es_anomalo = msg.payload.ground_truth.estado_anomalo;\nlet prediccion = msg.prediccion_algoritmo;\nlet timestamp = msg.payload.timestamp_local;\nlet algo = msg.nombre_algoritmo;\n\nif (real_es_anomalo === undefined || prediccion === undefined) return null;\n\nlet stats = global.get('stats_' + algo) || { \n    TP: 0, FP: 0, TN: 0, FN: 0, \n    latencias: [], anomalia_activa: false, ts_inicio: 0 \n};\n\nif (real_es_anomalo && !stats.anomalia_activa) {\n    stats.anomalia_activa = true;\n    stats.ts_inicio = timestamp;\n} else if (!real_es_anomalo) {\n    stats.anomalia_activa = false;\n    stats.ts_inicio = 0;\n}\n\nif (real_es_anomalo === true && prediccion === true) {\n    stats.TP++;\n    if (stats.ts_inicio > 0) {\n        let latencia = timestamp - stats.ts_inicio;\n        stats.latencias.push(latencia);\n        stats.ts_inicio = 0;\n    }\n} \nelse if (real_es_anomalo === false && prediccion === true) {\n    stats.FP++;\n} \nelse if (real_es_anomalo === true && prediccion === false) {\n    stats.FN++;\n} \nelse if (real_es_anomalo === false && prediccion === false) {\n    stats.TN++;\n}\n\nglobal.set('stats_' + algo, stats);\n\nlet precision = (stats.TP + stats.FP) > 0 ? (stats.TP / (stats.TP + stats.FP)) : 0.0;\nlet recall = (stats.TP + stats.FN) > 0 ? (stats.TP / (stats.TP + stats.FN)) : 0.0;\nlet f1_score = (precision + recall) > 0 ? (2 * (precision * recall) / (precision + recall)) : 0.0;\nlet latencia_media = stats.latencias.length > 0 ? (stats.latencias.reduce((a,b)=>a+b,0) / stats.latencias.length) : 0.0;\n\nmsg.payload = {\n    \"Algoritmo\": algo,\n    \"Metricas\": {\n        \"Precision\": (precision * 100).toFixed(2) + \"%\",\n        \"Recall_Sensibilidad\": (recall * 100).toFixed(2) + \"%\",\n        \"F1_Score\": f1_score.toFixed(4),\n        \"Latencia_Media\": latencia_media.toFixed(1) + \" seg\"\n    },\n    \"Matriz_Confusion\": {\n        \"Verdaderos_Positivos_TP\": stats.TP,\n        \"Falsos_Positivos_FP\": stats.FP,\n        \"Verdaderos_Negativos_TN\": stats.TN,\n        \"Falsos_Negativos_FN\": stats.FN\n    }\n};\n\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1140,
+        "y": 70,
+        "wires": [
+            [
+                "4c80aaf385a5440e",
+                "6e9e8b1040d4fc74"
+            ]
+        ]
+    },
+    {
+        "id": "4c80aaf385a5440e",
+        "type": "debug",
+        "z": "b8da40b5e5b44b97",
+        "name": "Consola Métricas TFM",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "payload",
+        "targetType": "msg",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 1400,
+        "y": 60,
+        "wires": []
+    },
+    {
+        "id": "5d3e44254f3762e7",
+        "type": "function",
+        "z": "b8da40b5e5b44b97",
+        "name": "Adaptar para InfluxDB",
+        "func": "// 1. Asegurar que leemos el objeto correctamente\nlet paquete = typeof msg.payload === \"string\" ? JSON.parse(msg.payload) : msg.payload;\n\n// 2. Extraer los METADATOS (Las etiquetas o Tags para InfluxDB)\nlet meta = paquete.metadatos || {};\n\nlet etiquetas = {\n    isla: meta.isla || \"Desconocida\",\n    municipio: meta.municipio || \"Desconocido\",\n    tipo_instalacion: meta.tipo_instalacion || \"Desconocida\",\n    centro: meta.centro || \"Desconocido\",\n    zona: meta.zona || \"Desconocida\",\n    id_dispositivo: meta.id_dispositivo || \"Unico\",\n    tipo_sensor: meta.tipo_sensor || \"Desconocido\"\n};\n\n// 3. Extraer los CAMPOS numéricos (Fields para InfluxDB) del nuevo bloque \"datos_sensores\"\nlet datos = paquete.datos_sensores || {};\nlet campos = {};\n\n// Mapeamos los nombres nuevos a las columnas de tu base de datos\nif (datos.temperatura_int_C !== undefined) campos.temperatura_interior = datos.temperatura_int_C;\nif (datos.temperatura_ext_C !== undefined) campos.temperatura_exterior = datos.temperatura_ext_C;\nif (datos.potencia_W !== undefined) campos.consumo_electrico_W = datos.potencia_W;\nif (datos.caudal_Lmin !== undefined) campos.caudal_agua_Lmin = datos.caudal_Lmin;\n\n// 4. Empaquetar y enviar a InfluxDB (Solo si encontró datos numéricos)\nif (Object.keys(campos).length > 0) {\n    msg.payload = [\n        campos,     // Los valores numéricos puros (Fields)\n        etiquetas   // Las etiquetas de categorización (Tags)\n    ];\n    return msg;\n} else {\n    // Si no detectó los datos, bloquea el flujo para no mandar basura a InfluxDB\n    return null;\n}",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 650,
+        "y": 200,
+        "wires": [
+            [
+                "297617e50eb1e94e",
+                "fa1284bce739a225"
+            ]
+        ]
+    },
+    {
+        "id": "e10f280ac5a00497",
+        "type": "debug",
+        "z": "b8da40b5e5b44b97",
+        "name": "Monitor Consola",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "payload",
+        "targetType": "msg",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 630,
+        "y": 280,
+        "wires": []
+    },
+    {
+        "id": "297617e50eb1e94e",
+        "type": "influxdb out",
+        "z": "b8da40b5e5b44b97",
+        "influxdb": "ac6f631fc39a1856",
+        "name": "Guardar Histórico",
+        "measurement": "clima_local",
+        "precision": "",
+        "retentionPolicy": "",
+        "database": "pruebas_tuya",
+        "precisionV18FluxV20": "ms",
+        "retentionPolicyV18Flux": "",
+        "org": "",
+        "bucket": "",
+        "x": 900,
+        "y": 200,
+        "wires": []
+    },
+    {
+        "id": "fa1284bce739a225",
+        "type": "debug",
+        "z": "b8da40b5e5b44b97",
+        "name": "debug 1",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "true",
+        "targetType": "full",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 860,
+        "y": 280,
+        "wires": []
+    },
+    {
+        "id": "9fcbe24e70462c77",
+        "type": "file",
+        "z": "b8da40b5e5b44b97",
+        "name": "",
+        "filename": "/data/resultados_tfm.csv",
+        "filenameType": "str",
+        "appendNewline": true,
+        "createDir": false,
+        "overwriteFile": "false",
+        "encoding": "none",
+        "x": 1670,
+        "y": 140,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "6e9e8b1040d4fc74",
+        "type": "function",
+        "z": "b8da40b5e5b44b97",
+        "name": "Preparar CSV",
+        "func": "let p = msg.payload;\n\n// Extraemos los valores clave para el TFM\nlet algoritmo = p.Algoritmo;\nlet precision = p.Metricas.Precision;\nlet f1 = p.Metricas.F1_Score;\nlet latencia = p.Metricas.Latencia_Media;\nlet tp = p.Matriz_Confusion.Verdaderos_Positivos_TP;\nlet fp = p.Matriz_Confusion.Falsos_Positivos_FP;\nlet fn = p.Matriz_Confusion.Falsos_Negativos_FN;\n\n// Creamos una fila de texto separada por punto y coma\nlet linea_csv = `${algoritmo};${precision};${f1};${latencia};${tp};${fp};${fn}`;\n\nmsg.payload = linea_csv;\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1380,
+        "y": 140,
+        "wires": [
+            [
+                "9fcbe24e70462c77"
+            ]
+        ]
+    },
+    {
+        "id": "0ceb6ce9dfbdb925",
+        "type": "mqtt-broker",
+        "name": "Mosquitto Docker",
+        "broker": "mosquitto",
+        "port": "1883",
+        "clientid": "",
+        "autoConnect": true,
+        "usetls": false,
+        "protocolVersion": "4",
+        "keepalive": "60",
+        "cleansession": true,
+        "autoUnsubscribe": true,
+        "birthTopic": "",
+        "birthQos": "0",
+        "birthPayload": "",
+        "closeTopic": "",
+        "closeQos": "0",
+        "closePayload": "",
+        "willTopic": "",
+        "willQos": "0",
+        "willPayload": ""
+    },
+    {
+        "id": "ac6f631fc39a1856",
+        "type": "influxdb",
+        "hostname": "influxdb",
+        "port": "8086",
+        "protocol": "http",
+        "database": "pruebas_tuya",
+        "name": "InfluxDB Docker",
+        "usetls": false,
+        "tls": "",
+        "influxdbVersion": "1.x",
+        "url": "",
+        "timeout": "",
+        "rejectUnauthorized": false
+    },
+    {
+        "id": "920f3a3a012a4f86",
+        "type": "global-config",
+        "env": [],
+        "modules": {
+            "node-red-contrib-influxdb": "0.7.0"
+        }
+    }
+]

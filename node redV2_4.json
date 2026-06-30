@@ -1,0 +1,269 @@
+[
+    {
+        "id": "b30b72cfd30dd1d4",
+        "type": "tab",
+        "label": "Flow 1",
+        "disabled": false,
+        "info": ""
+    },
+    {
+        "id": "26ad4576f5a88e06",
+        "type": "mqtt in",
+        "z": "b30b72cfd30dd1d4",
+        "name": "Recibir ESP32",
+        "topic": "canarias/#",
+        "qos": "0",
+        "datatype": "auto-detect",
+        "broker": "0ceb6ce9dfbdb925",
+        "nl": false,
+        "rap": true,
+        "rh": 0,
+        "inputs": 0,
+        "x": 220,
+        "y": 200,
+        "wires": [
+            [
+                "387afaffa54b155e"
+            ]
+        ]
+    },
+    {
+        "id": "387afaffa54b155e",
+        "type": "json",
+        "z": "b30b72cfd30dd1d4",
+        "name": "Convertir JSON",
+        "property": "payload",
+        "action": "",
+        "pretty": false,
+        "x": 430,
+        "y": 200,
+        "wires": [
+            [
+                "7cf96d82ffeb661b",
+                "b06a427aa75341b0"
+            ]
+        ]
+    },
+    {
+        "id": "7cf96d82ffeb661b",
+        "type": "function",
+        "z": "b30b72cfd30dd1d4",
+        "name": "Adaptar para InfluxDB",
+        "func": "// 1. Convertir el texto recibido de MQTT a un objeto JSON\nvar paquete = typeof msg.payload === \"string\" ? JSON.parse(msg.payload) : msg.payload;\n\n// 2. Extraer los METADATOS (¡Aquí está la clave de la flota!)\nvar meta = paquete.metadatos || {};\n\nvar etiquetas = {\n    isla: meta.isla || \"Desconocida\",\n    municipio: meta.municipio || \"Desconocido\",\n    tipo_instalacion: meta.tipo_instalacion || \"Desconocida\",\n    centro: meta.centro || \"Desconocido\",\n    zona: meta.zona || \"Desconocida\",\n    id_dispositivo: meta.id_dispositivo || \"Unico\", // <- ¡NUEVA ETIQUETA VITAL!\n    tipo_sensor: meta.tipo_sensor || \"Desconocido\"\n};\n\n// 3. Preparar los CAMPOS numéricos para guardar en InfluxDB\nvar campos = {};\n\n// -- A. Extraer Temperatura y Humedad INTERIOR --\nif (paquete.sensor_clima_interior) {\n    var datosInt = paquete.sensor_clima_interior;\n    for (var i = 0; i < datosInt.length; i++) {\n        if (datosInt[i].code === \"va_temperature\") campos.temperatura_interior = datosInt[i].value / 10.0;\n        if (datosInt[i].code === \"va_humidity\") campos.humedad_interior = datosInt[i].value;\n    }\n}\n\n// -- B. Extraer Temperatura y Humedad EXTERIOR --\nif (paquete.sensor_clima_exterior) {\n    var datosExt = paquete.sensor_clima_exterior;\n    for (var j = 0; j < datosExt.length; j++) {\n        if (datosExt[j].code === \"va_temperature\") campos.temperatura_exterior = datosExt[j].value / 10.0;\n        if (datosExt[j].code === \"va_humidity\") campos.humedad_exterior = datosExt[j].value;\n    }\n}\n\n// -- C. Extraer Consumo Eléctrico --\nif (paquete.consumo_electrico_W !== undefined) {\n    campos.consumo_electrico_W = paquete.consumo_electrico_W;\n}\n\n// -- D. Extraer Caudal de Agua --\nif (paquete.caudal_agua_Lmin !== undefined) {\n    campos.caudal_agua_Lmin = paquete.caudal_agua_Lmin;\n}\n\n// 4. Empaquetar y enviar a InfluxDB (Solo si hay datos válidos)\nif (Object.keys(campos).length > 0) {\n    msg.payload = [\n        campos,     // Los valores numéricos puros\n        etiquetas   // Las etiquetas de categorización (Tags)\n    ];\n    return msg;\n} else {\n    // Si el paquete llegó vacío o corrupto, lo ignoramos para no ensuciar la base de datos\n    return null;\n}",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 650,
+        "y": 200,
+        "wires": [
+            [
+                "695abd457c420ee3",
+                "18c6a73e615e5b5e"
+            ]
+        ]
+    },
+    {
+        "id": "b06a427aa75341b0",
+        "type": "debug",
+        "z": "b30b72cfd30dd1d4",
+        "name": "Monitor Consola",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "payload",
+        "targetType": "msg",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 630,
+        "y": 280,
+        "wires": []
+    },
+    {
+        "id": "a1ea0b9d48a99444",
+        "type": "inject",
+        "z": "b30b72cfd30dd1d4",
+        "name": "Consultar Base de Datos",
+        "props": [],
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "",
+        "x": 260,
+        "y": 380,
+        "wires": [
+            [
+                "c8e52cbb0098edb4"
+            ]
+        ]
+    },
+    {
+        "id": "614579bba8717265",
+        "type": "debug",
+        "z": "b30b72cfd30dd1d4",
+        "name": "Ver Histórico en Consola",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "payload",
+        "targetType": "msg",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 760,
+        "y": 380,
+        "wires": []
+    },
+    {
+        "id": "ad075e76587c48f1",
+        "type": "http in",
+        "z": "b30b72cfd30dd1d4",
+        "name": "hora",
+        "url": "hora_local",
+        "method": "get",
+        "upload": false,
+        "skipBodyParsing": false,
+        "swaggerDoc": "",
+        "x": 190,
+        "y": 480,
+        "wires": [
+            [
+                "4592dc6894c0fcb0"
+            ]
+        ]
+    },
+    {
+        "id": "4592dc6894c0fcb0",
+        "type": "function",
+        "z": "b30b72cfd30dd1d4",
+        "name": "function 1",
+        "func": "// Forzamos la obtención de la fecha en formato UTC puro\nvar ahora = new Date();\nvar utc_milisegundos = ahora.getTime() + (ahora.getTimezoneOffset() * 60000);\n\nmsg.payload = { \"t\": utc_milisegundos };\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 340,
+        "y": 480,
+        "wires": [
+            [
+                "25bc51a9cb4380ea"
+            ]
+        ]
+    },
+    {
+        "id": "25bc51a9cb4380ea",
+        "type": "http response",
+        "z": "b30b72cfd30dd1d4",
+        "name": "",
+        "statusCode": "",
+        "headers": {},
+        "x": 530,
+        "y": 480,
+        "wires": []
+    },
+    {
+        "id": "695abd457c420ee3",
+        "type": "influxdb out",
+        "z": "b30b72cfd30dd1d4",
+        "influxdb": "ac6f631fc39a1856",
+        "name": "Guardar Histórico",
+        "measurement": "clima_local",
+        "precision": "",
+        "retentionPolicy": "",
+        "database": "pruebas_tuya",
+        "precisionV18FluxV20": "ms",
+        "retentionPolicyV18Flux": "",
+        "org": "",
+        "bucket": "",
+        "x": 900,
+        "y": 200,
+        "wires": []
+    },
+    {
+        "id": "c8e52cbb0098edb4",
+        "type": "influxdb in",
+        "z": "b30b72cfd30dd1d4",
+        "influxdb": "ac6f631fc39a1856",
+        "name": "Traer Últimas Lecturas",
+        "query": "SELECT * FROM clima_local ORDER BY time DESC LIMIT 5",
+        "rawOutput": false,
+        "precision": "",
+        "retentionPolicy": "",
+        "org": "",
+        "x": 510,
+        "y": 380,
+        "wires": [
+            [
+                "614579bba8717265"
+            ]
+        ]
+    },
+    {
+        "id": "18c6a73e615e5b5e",
+        "type": "debug",
+        "z": "b30b72cfd30dd1d4",
+        "name": "debug 1",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "true",
+        "targetType": "full",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 860,
+        "y": 280,
+        "wires": []
+    },
+    {
+        "id": "0ceb6ce9dfbdb925",
+        "type": "mqtt-broker",
+        "name": "Mosquitto Docker",
+        "broker": "mosquitto",
+        "port": "1883",
+        "clientid": "",
+        "autoConnect": true,
+        "usetls": false,
+        "protocolVersion": "4",
+        "keepalive": "60",
+        "cleansession": true,
+        "birthTopic": "",
+        "birthQos": "0",
+        "birthPayload": "",
+        "closeTopic": "",
+        "closeQos": "0",
+        "closePayload": "",
+        "willTopic": "",
+        "willQos": "0",
+        "willPayload": ""
+    },
+    {
+        "id": "ac6f631fc39a1856",
+        "type": "influxdb",
+        "hostname": "influxdb",
+        "port": "8086",
+        "protocol": "http",
+        "database": "pruebas_tuya",
+        "name": "InfluxDB Docker",
+        "usetls": false,
+        "tls": "",
+        "influxdbVersion": "1.x",
+        "url": "",
+        "timeout": "",
+        "rejectUnauthorized": false
+    },
+    {
+        "id": "b6dcc4714116cafc",
+        "type": "global-config",
+        "env": [],
+        "modules": {
+            "node-red-contrib-influxdb": "0.7.0"
+        }
+    }
+]
