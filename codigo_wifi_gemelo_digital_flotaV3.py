@@ -27,12 +27,12 @@ ACCESS_SECRET = "[CREDENCIAL_OCULTA_ACCESS_SECRET]"
 DEVICE_ID = "[CREDENCIAL_OCULTA_DEVICE_ID]"
 TUYA_HOST = "https://openapi.tuyaeu.com"
 
-# --- CONFIGURACIÓN DE PINES 4G (LILYGO T-SIM7600) ---
+# --- CONFIGURACIÓN DE PINES 4G (LILYGO T-SIM A7670E / 7600G) ---
 USAR_4G = True  # Cambia a False para usar Wi-Fi local
-MODEM_TX = 27
-MODEM_RX = 26
+MODEM_TX = 26
+MODEM_RX = 27
 MODEM_PWR = 4
-APN_OPERADORA = "tu_apn_aqui" # Ej: "orangeworld", "telefonica.es", etc.
+APN_OPERADORA = "lowi.private.omv.es" # Ajusta a tu operadora (ej. orangeworld)
 
 # Variables de caché para Token
 token_guardado = None
@@ -147,7 +147,8 @@ def obtener_token_tuya():
             token_guardado = js["result"]["access_token"]
             ultimo_registro_token = ahora
             return token_guardado
-    except:
+    except Exception as e:
+        print(f"⚠️ Fallo al obtener token: {e}")
         return None
     return None
 
@@ -168,11 +169,11 @@ def obtener_temperatura_real(token):
     return None
 
 # ==========================================================================
-# 📡 INTERFACES DE RED HÍBRIDA (WI-FI / 4G CELULAR)
+# 📡 INTERFACES DE RED HÍBRIDA (WI-FI / PROTOCOLOS 4G ACTUALIZADOS)
 # ==========================================================================
 
 def conectar_wifi():
-    print("Iniciando conexión a red local Wi-Fi...")
+    print("📡 Iniciando conexión a red local Wi-Fi...")
     wlan = network.WLAN(network.STA_IF)
     wlan.active(True)
     wlan.connect(WIFI_SSID, WIFI_PASS)
@@ -186,41 +187,81 @@ def conectar_wifi():
         print("❌ Error: No se pudo conectar al Wi-Fi.")
     return wlan
 
-def encender_modem():
-    print("Iniciando secuencia de encendido del módem 4G...")
-    pwr_pin = machine.Pin(MODEM_PWR, machine.Pin.OUT)
-    pwr_pin.value(0)
-    time.sleep(3)
-    pwr_pin.value(1)
-    time.sleep(5)  
-    print("Módem energizado.")
+def inicializar_modem_hardware():
+    print("🚀 [Hardware] Inicializando canal celular de grado industrial...")
+    
+    # 1. Secuencia estricta de encendido (Tiempos críticos SIMCom)
+    pwr_key = machine.Pin(MODEM_PWR, machine.Pin.OUT)
+    pwr_key.value(1)
+    time.sleep_ms(2500) 
+    pwr_key.value(0)
+    
+    print("⏳ Esperando estabilidad del firmware del módem (8 segundos)...")
+    time.sleep(8) 
+    
+    uart = machine.UART(1, baudrate=115200, tx=MODEM_TX, rx=MODEM_RX, timeout=5000)
+    if uart.any(): uart.read()
+    
+    # 2. Configuración base del transceptor
+    comandos_base = [
+        ("AT\r\n", "OK"),
+        # ("AT+CPIN=\"pin\"\r\n", "READY"), # Descomentar y poner PIN si la SIM lo requiere
+        ("AT+CFUN=1\r\n", "OK"),                        
+        (f'AT+CGDCONT=1,"IP","{APN_OPERADORA}"\r\n', "OK")                          
+    ]
+    
+    for cmd, resp in comandos_base:
+        print(f"➡️ Enviando: {cmd.strip()}")
+        uart.write(cmd)
+        time.sleep(2.5) 
+        if uart.any():
+            print(f"📥 Respuesta: {uart.read().decode('utf-8', 'ignore').strip()}")
+            
+    print("⏳ Esperando registro en la red celular...")
+    time.sleep(5)
+    
+    uart.write("AT+CREG?\r\n")
+    time.sleep(1)
+    if uart.any(): print(f"📥 Estado de red: {uart.read().decode('utf-8', 'ignore').strip()}")
+
+    # 3. Llamada de datos y limpieza de buffers antes de entregar UART a MicroPython
+    print("📞 Marcando número de conexión de datos (ATD*99#)...")
+    uart.write("ATD*99#\r\n")
+    time.sleep(2)
+    if uart.any(): print(f"📥 Respuesta marcación: {uart.read().decode('utf-8', 'ignore').strip()}")
+    
+    return uart
 
 def conectar_4g():
-    encender_modem()
-    uart = machine.UART(1, baudrate=115200, tx=MODEM_TX, rx=MODEM_RX)
-    print("Enviando comando AT de prueba...")
-    uart.write('AT\r\n')
-    time.sleep(1)
-    if uart.any():
-        print("Respuesta del módem:", uart.read().decode('utf-8').strip())
+    uart = inicializar_modem_hardware()
     
-    print(f"Configurando conexión PPP con APN: '{APN_OPERADORA}'...")
+    print("📶 [Celular] Levantando túnel PPP en MicroPython...")
     ppp = network.PPP(uart)
     ppp.active(True)
     ppp.connect(authmode=ppp.AUTH_NONE, username="", password="")
     
     intentos = 0
-    while not ppp.isconnected() and intentos < 20:
-        print("Negociando con la red celular (esperando IP)...")
+    while not ppp.isconnected() and intentos < 15:
+        print(f"⏳ PPP negociando conexión IP con {APN_OPERADORA}...")
         time.sleep(2)
         intentos += 1
         
     if ppp.isconnected():
         print("✅ [OUT-OF-BAND] Conexión 4G establecida exitosamente.")
         print("Configuración IP (Celular):", ppp.ifconfig())
+        
+        # --- PARCHE MAESTRO: INYECCIÓN DNS ---
+        # MicroPython olvida el DNS al levantar PPP. Usamos una antena virtual
+        # desconectada para inyectar el DNS de Google globalmente.
+        print("💉 Inyectando DNS global para habilitar peticiones a Tuya Cloud...")
+        sta = network.WLAN(network.STA_IF)
+        sta.active(True)
+        sta.disconnect()
+        sta.ifconfig(('10.254.254.254', '255.255.255.0', '10.254.254.1', '8.8.8.8'))
+        
         return ppp
     else:
-        print("❌ Error: Tiempo de espera agotado en 4G.")
+        print("❌ Error: Tiempo de espera PPP agotado.")
         return None
 
 # ==========================================================================
@@ -231,15 +272,16 @@ def main():
     print("🤖 INICIANDO ENTORNO DE GEMELO DIGITAL CON BASE FÍSICA COHERENTE")
     
     # ---------------- LÓGICA DE CONMUTACIÓN DE TRANSPORTE ----------------
+    # Apagamos Wi-Fi por seguridad si vamos a usar 4G puro
     if USAR_4G:
         print("Modo de transporte: RED CELULAR 4G LTE")
+        network.WLAN(network.AP_IF).active(False)
         interfaz_red = conectar_4g()
     else:
         print("Modo de transporte: RED LOCAL WI-FI")
         interfaz_red = conectar_wifi()
     # ---------------------------------------------------------------------
 
-    # --- AÑADIDO: KEEPALIVE EN LA CONEXIÓN INICIAL ---
     cliente_mqtt = MQTTClient(CLIENT_ID, MQTT_SERVER, port=MQTT_PORT, user=MQTT_USER, password=MQTT_PASS, keepalive=60)
     try: 
         cliente_mqtt.connect()
@@ -258,7 +300,6 @@ def main():
         # ====================================================================
         red_activa = False
         
-        # 1. Comprobar conectividad física (Wi-Fi o 4G)
         if interfaz_red and interfaz_red.isconnected():
             red_activa = True
         else:
@@ -270,9 +311,8 @@ def main():
             
             if interfaz_red and interfaz_red.isconnected():
                 red_activa = True
-                cliente_mqtt = None # La IP pudo cambiar, forzamos reinicio de MQTT
+                cliente_mqtt = None 
 
-        # 2. Comprobar y restaurar MQTT si la red está activa
         if red_activa and cliente_mqtt is None:
             try:
                 print("🔄 [MQTT] Reconectando al broker MQTT...")
@@ -296,7 +336,7 @@ def main():
 
         print(f"\n🌍 [Sincronización Sensor Real] Baseline Térmico Tuya: {t_real_ancla} °C")
 
-        # --- ENVÍO DEL SENSOR REAL A NODE-RED PARA COMPARATIVA EN GRAFANA ---
+        # --- ENVÍO DEL SENSOR REAL ---
         payload_real = {
             "metadatos": {
                 "id_dispositivo": "sensor_tuya_real",
@@ -378,7 +418,6 @@ def main():
                         print("✅ [Recuperado] Trama enviada desde el búfer local.")
                         time.sleep(0.1) 
                 except:
-                    # --- AÑADIDO: SI FALLA EL VACIADO, DECLARAR MQTT CAÍDO ---
                     cliente_mqtt = None 
 
             # --- ENVÍO DE LA TRAMA ACTUAL ---
@@ -390,7 +429,6 @@ def main():
                     raise Exception("Broker desconectado")
             except Exception as e:
                 print(f"⚠️ [Fallo de Red] Guardando {id_disp} en búfer (Store-and-Forward)...")
-                # --- AÑADIDO: FORZAR DESTRUCCIÓN DEL OBJETO MQTT PARA ACTIVAR EL WATCHDOG ---
                 cliente_mqtt = None 
 
                 if len(buffer_offline) >= MAX_BUFFER_SIZE:
