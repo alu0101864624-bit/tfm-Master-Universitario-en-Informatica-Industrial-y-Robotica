@@ -114,6 +114,11 @@ motores = {
 # ==========================================================================
 # 🔐 INFRAESTRUCTURA DE PETICIONES SEGURO-CRIPTOGRÁFICAS TUYA
 # ==========================================================================
+def calcular_sha256(texto):
+    """Calcula el hash SHA256 de un texto plano (requerido por Tuya)"""
+    sha = uhashlib.sha256()
+    sha.update(texto.encode('utf-8'))
+    return ubinascii.hexlify(sha.digest()).decode('utf-8')
 
 def hmac_sha256(key, msg):
     key_bytes, msg_bytes = key.encode('utf-8'), msg.encode('utf-8')
@@ -125,11 +130,12 @@ def hmac_sha256(key, msg):
     return ubinascii.hexlify(uhashlib.sha256(o_key_pad + inner).digest()).decode('utf-8').upper()
 
 def generar_firma_tuya(method, url_path, token="", body_str=""):
-    hora_utc = time.time() - 3600
+    # 🌍 CORRECCIÓN BUG UTC+0 CANARIAS: Se elimina la resta de 3600 segundos.
+    # El reloj del ESP32 trabajará estrictamente con el Unix Epoch universal.
+    hora_utc = time.time()
+    
     t = str(int((hora_utc + 946684800) * 1000))
-    h = uhashlib.sha256(body_str.encode('utf-8'))
-    body_hash = ubinascii.hexlify(h.digest()).decode('utf-8').lower()
-    string_a_firmar = ACCESS_ID + token + t + method + "\n" + body_hash + "\n\n" + url_path
+    string_a_firmar = ACCESS_ID + token + t + method + "\n" + calcular_sha256(body_str) + "\n\n" + url_path
     return hmac_sha256(ACCESS_SECRET, string_a_firmar), t
 
 def obtener_token_tuya():
@@ -184,6 +190,19 @@ def main():
         time.sleep(1)
         timeout += 1
 
+    # 🌍 CORRECCIÓN BUG UTC+0 CANARIAS: Sincronización NTP OBLIGATORIA
+    # Se ejecuta solo si el Wi-Fi conectó con éxito en el arranque
+    if wlan.isconnected():
+        print("⏳ Sincronizando reloj atómico por NTP...")
+        try:
+            import ntptime
+            ntptime.settime()
+            print("✅ Reloj sincronizado con éxito en UTC absoluto.")
+        except Exception as e:
+            print(f"⚠️ Aviso: No se pudo sincronizar NTP (Revisar conexión a Internet): {e}")
+    else:
+        print("❌ Advertencia: Sin Wi-Fi en el arranque, el reloj operará sin sincronizar.")
+
     cliente_mqtt = None
     temp_ultimas = {"col_clima_int_01": 21.0, "hosp_clima_int_01": 22.0}
 
@@ -202,6 +221,12 @@ def main():
             if wlan.isconnected():
                 print("✅ [Red] Wi-Fi restaurado.")
                 cliente_mqtt = None # Forzamos reiniciar MQTT porque la IP pudo cambiar
+                
+                # 🔄 Opcional: Resincronizar el reloj si estuvimos caídos mucho tiempo
+                try:
+                    import ntptime
+                    ntptime.settime()
+                except: pass
             else:
                 print("❌ [Red] Imposible conectar al Wi-Fi. Operando offline.")
 
