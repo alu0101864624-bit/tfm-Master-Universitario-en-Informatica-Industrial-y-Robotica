@@ -9,8 +9,8 @@ import ntptime
 from umqtt.simple import MQTTClient
 
 # --- 1. CONFIGURACIÓN DE RED LOCAL (Red A) ---
-WIFI_SSID = "JUANffrggr 4068"
-WIFI_PASS = "123rgrgt678"
+WIFI_SSID = ""
+WIFI_PASS = ""
 
 # --- 2. CONFIGURACIÓN DEL SERVIDOR MQTT REMOTO (Red B) ---
 MQTT_SERVER = "192.168.137.1"
@@ -21,10 +21,10 @@ MQTT_TOPIC = b"casa1/sensor_ambiente"
 CLIENT_ID = ubinascii.hexlify(machine.unique_id())
 
 # --- 3. CREDENCIALES TUYA CLOUD ---
-ACCESS_ID = "qcgu4tgthytgaaesuh35r"
+ACCESS_ID = ""
 # Aseguramos que el secret se procese correctamente como texto plano para la firma
-ACCESS_SECRET = "be3a6bbargrgtytrr9ac7628c404a3" 
-DEVICE_ID = "bfcttyuiuytui8votz"
+ACCESS_SECRET = "" 
+DEVICE_ID = ""
 
 # Endpoint oficial para el Data Center de Europa Central (visto en tu imagen)
 TUYA_HOST = "https://openapi.tuyaeu.com"
