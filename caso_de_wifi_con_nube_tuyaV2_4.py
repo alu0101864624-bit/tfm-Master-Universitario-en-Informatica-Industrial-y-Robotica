@@ -11,8 +11,8 @@ import urandom
 from umqtt.simple import MQTTClient
 
 # --- 1. CONFIGURACIÓN DE RED LOCAL ---
-WIFI_SSID = "MIWIFI_m4p4"
-WIFI_PASS = "aFd4RpeT"
+WIFI_SSID = ""
+WIFI_PASS = ""
 
 # --- 2. CONFIGURACIÓN MQTT ---
 MQTT_SERVER = "192.168.1.130"
@@ -23,9 +23,9 @@ CLIENT_ID = ubinascii.hexlify(machine.unique_id())
 INTERVALO_PRUEBAS_SEG = 30
 
 # --- 3. CREDENCIALES TUYA CLOUD ---
-ACCESS_ID = "qcgu49q8rtgaaesuh35r"
-ACCESS_SECRET = "be3a6bba002040f2bc09ac7628c404a3" 
-DEVICE_ID = "bfc28dedd9d1d787f8votz"
+ACCESS_ID = ""
+ACCESS_SECRET = "" 
+DEVICE_ID = ""
 TUYA_HOST = "https://openapi.tuyaeu.com"
 
 # ==========================================
