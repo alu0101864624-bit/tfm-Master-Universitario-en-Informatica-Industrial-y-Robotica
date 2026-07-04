@@ -12,8 +12,8 @@ from umqtt.simple import MQTTClient
 # --- 1. PARAMETRIZACIÓN DE PRUEBAS (SIN DEEP SLEEP) ---
 INTERVALO_PRUEBAS_SEG = 30  # Lee y envía datos cada 30 segundos
 
-WIFI_SSID = "JUA5y678658S 4068"
-WIFI_PASS = "1yuu7u778"
+WIFI_SSID = ""
+WIFI_PASS = ""
 
 # --- 2. CONFIGURACIÓN MQTT Y METADATOS DE PROCEDENCIA ---
 MQTT_SERVER = "192.168.137.1"
@@ -24,12 +24,12 @@ ORIGEN_INFRAESTRUCTURA = "Colegio_San_Cristobal_La_Laguna_01"
 CLIENT_ID = ubinascii.hexlify(machine.unique_id())
 
 # --- 3. CREDENCIALES Y DISPOSITIVOS TUYA CLOUD ---
-ACCESS_ID = "qcg6546746475878uh35r"
-ACCESS_SECRET = "be3678890986989c767788987804a3"
+ACCESS_ID = ""
+ACCESS_SECRET = ""
 TUYA_HOST = "https://openapi.tuyaeu.com"
 
 # ID unívoco del sensor interior real
-DEVICE_ID_1 = "bfc286789906898votz"
+DEVICE_ID_1 = ""
 # ID del futuro sensor exterior (inhabilitado en esta prueba)
 DEVICE_ID_2 = "bfc28de767787f8xxxx" 
 
