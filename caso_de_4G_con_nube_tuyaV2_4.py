@@ -22,9 +22,9 @@ SIM7000_TX = 26
 SIM7000_RX = 27
 
 # Credenciales Tuya
-ACCESS_ID = "qcgu49q8rtgaaesuh35r"
-ACCESS_SECRET = "be3a6bba002040f2bc09ac7628c404a3" 
-DEVICE_ID = "bfc28dedd9d1d787f8votz"
+ACCESS_ID = ""
+ACCESS_SECRET = "" 
+DEVICE_ID = ""
 TUYA_HOST = "openapi.tuyaeu.com"
 
 token_guardado = None
