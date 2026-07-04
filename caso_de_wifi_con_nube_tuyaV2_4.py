@@ -11,8 +11,8 @@ import urandom
 from umqtt.simple import MQTTClient
 
 # --- 1. CONFIGURACIÓN DE RED LOCAL ---
-WIFI_SSID = "MIWyruyip4"
-WIFI_PASS = "y6uiuyyieT"
+WIFI_SSID = "MIWIFI_m4p4"
+WIFI_PASS = "aFd4RpeT"
 
 # --- 2. CONFIGURACIÓN MQTT ---
 MQTT_SERVER = "192.168.1.130"
@@ -23,9 +23,9 @@ CLIENT_ID = ubinascii.hexlify(machine.unique_id())
 INTERVALO_PRUEBAS_SEG = 30
 
 # --- 3. CREDENCIALES TUYA CLOUD ---
-ACCESS_ID = ""
-ACCESS_SECRET = "" 
-DEVICE_ID = ""
+ACCESS_ID = "qcgu49q8rtgaaesuh35r"
+ACCESS_SECRET = "be3a6bba002040f2bc09ac7628c404a3" 
+DEVICE_ID = "bfc28dedd9d1d787f8votz"
 TUYA_HOST = "https://openapi.tuyaeu.com"
 
 # ==========================================
@@ -98,10 +98,9 @@ def hmac_sha256(key, msg):
     return ubinascii.hexlify(uhashlib.sha256(o_key_pad + inner).digest()).decode('utf-8').upper()
 
 def generar_firma_tuya(method, url_path, token="", body_str=""):
-    # 🌍 Tuya exige la hora en formato UTC. Como el ESP32 está corriendo en hora local 
-    # de Canarias (UTC+1 en horario de verano), restamos 3600 segundos (1 hora) 
-    # para enviar el timestamp exacto que espera el servidor.
-    hora_utc = time.time() - 3600
+    # 🌍 CORRECCIÓN BUG UTC+0 CANARIAS: Se elimina la resta de 3600 segundos.
+    # El reloj del ESP32 trabajará estrictamente con el Unix Epoch universal.
+    hora_utc = time.time()
     
     t = str(int((hora_utc + 946684800) * 1000))
     string_a_firmar = ACCESS_ID + token + t + method + "\n" + calcular_sha256(body_str) + "\n\n" + url_path
@@ -198,6 +197,15 @@ def simular_agua(id_disp):
 def main():
     print("\n⚡ INICIANDO SIMULADOR DE FLOTA IOT MULTI-INSTALACIÓN ⚡")
     # conectar_wifi() # Descomentar si usas la función de WiFi propia
+    
+    # 🌍 CORRECCIÓN BUG UTC+0 CANARIAS: Sincronización NTP OBLIGATORIA
+    print("⏳ Sincronizando reloj atómico por NTP...")
+    try:
+        ntptime.settime()
+        print("✅ Reloj sincronizado con éxito en UTC absoluto.")
+    except Exception as e:
+        print(f"⚠️ Aviso: No se pudo sincronizar NTP (Revisar conexión a Internet): {e}")
+
     cliente_mqtt = MQTTClient(CLIENT_ID, MQTT_SERVER, port=MQTT_PORT, user=MQTT_USER, password=MQTT_PASS)
     try: cliente_mqtt.connect()
     except: pass
@@ -259,3 +267,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
