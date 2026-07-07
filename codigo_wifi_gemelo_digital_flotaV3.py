@@ -125,7 +125,11 @@ def hmac_sha256(key, msg):
     return ubinascii.hexlify(uhashlib.sha256(o_key_pad + inner).digest()).decode('utf-8').upper()
 
 def generar_firma_tuya(method, url_path, token="", body_str=""):
-    hora_utc = time.time() - 3600
+    # --- CORRECCIÓN DE FRONTERA HORARIA DE CANARIAS (UTC+0 EN INVIERNO) ---
+    # El epoch nativo de time.time() ya opera en base UTC. 
+    # Restar 3600 segundos de manera estática provocaba un desfase hacia UTC-1 en invierno,
+    # rompiendo la ventana de tolerancia de ±5 minutos de la API de Tuya Cloud.
+    hora_utc = time.time() 
     t = str(int((hora_utc + 946684800) * 1000))
     h = uhashlib.sha256(body_str.encode('utf-8'))
     body_hash = ubinascii.hexlify(h.digest()).decode('utf-8').lower()
