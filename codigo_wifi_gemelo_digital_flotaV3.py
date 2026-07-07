@@ -7,6 +7,7 @@ import json
 import machine
 import gc
 import urandom
+import ntptime 
 from umqtt.simple import MQTTClient
 
 # ==========================================================================
@@ -41,7 +42,6 @@ ultimo_registro_token = 0
 # --- SISTEMA STORE AND FORWARD (BÚFER LOCAL) ---
 buffer_offline = []
 MAX_BUFFER_SIZE = 100  # Límite de tramas a guardar en RAM para no agotar la memoria
-
 # --- INVENTARIO ESTRUCTURADO DE LA FLOTA CANARIA ---
 INVENTARIO_SENSORES = [
     {"id_dispositivo": "col_clima_int_01", "tipo_sensor": "temperatura_interior", "isla": "Tenerife", "municipio": "La_Laguna", "tipo_instalacion": "Colegio", "centro": "San_Cristobal", "zona": "Aula_Principal"},
@@ -127,8 +127,8 @@ def hmac_sha256(key, msg):
 def generar_firma_tuya(method, url_path, token="", body_str=""):
     # --- CORRECCIÓN DE FRONTERA HORARIA DE CANARIAS (UTC+0 EN INVIERNO) ---
     # El epoch nativo de time.time() ya opera en base UTC. 
-    # Restar 3600 segundos de manera estática provocaba un desfase hacia UTC-1 en invierno,
-    # rompiendo la ventana de tolerancia de ±5 minutos de la API de Tuya Cloud.
+
+  
     hora_utc = time.time() 
     t = str(int((hora_utc + 946684800) * 1000))
     h = uhashlib.sha256(body_str.encode('utf-8'))
@@ -185,8 +185,17 @@ def conectar_wifi():
     while not wlan.isconnected() and timeout < 15:
         time.sleep(1)
         timeout += 1
+        
     if wlan.isconnected():
         print("✅ Conexión Wi-Fi establecida.")
+        # --- NUEVO: Sincronización del reloj ---
+        try:
+            print("⏳ Sincronizando reloj interno vía NTP...")
+            ntptime.settime()  # Fija la hora UTC actual en el ESP32
+            print("✅ Reloj sincronizado con éxito.")
+        except Exception as e:
+            print(f"⚠️ Error al sincronizar NTP: {e}")
+        # ----------------------------------------
     else:
         print("❌ Error: No se pudo conectar al Wi-Fi.")
     return wlan
@@ -335,7 +344,7 @@ def main():
             t_real_ancla = 22.4 
             print("⚠️ Conexión Tuya caída. Usando ancla térmica histórica de respaldo.")
 
-        hora_solar = (int(time.time() / 3600) % 24)
+        hora_solar = (int(time.time() /3600 ) % 24)
         timestamp_epoch = int(time.time() + 946684800)
 
         print(f"\n🌍 [Sincronización Sensor Real] Baseline Térmico Tuya: {t_real_ancla} °C")
@@ -446,3 +455,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
